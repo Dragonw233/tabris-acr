@@ -1,7 +1,7 @@
 {
-    "author":  "Dragonw233",
-    "version":  "1.0.0.0",
-    "description":  "PR 黑魔 ACR",
+    "author":  "Tabris",
+    "version":  "1.0.0",
+    "description":  "岚玉棠的小acr",
     "supportedJobs":  [
                           {
                               "job":  "BLM",
@@ -13,5 +13,5 @@
     "downloadUrl":  "https://raw.githubusercontent.com/Dragonw233/tabris-acr/main/Tabris.zip",
     "sourceRepositoryUrl":  "https://github.com/Dragonw233/tabris-acr",
     "sponsorUrl":  "",
-    "sha256":  "acfd2f35ae8e8b01f8f0a0979b3415147b5c9017da9a6389931b7d4362d057d9"
+    "sha256":  "60a732e4e33d58a94b2f1569cec79c2565e1b0f436347eb6ea1fd89d76c2dead"
 }

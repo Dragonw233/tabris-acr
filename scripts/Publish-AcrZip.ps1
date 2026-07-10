@@ -1,42 +1,21 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [ValidateNotNullOrEmpty()]
-    [string] $Version,
+    [string] $Version = "",
 
     [ValidateNotNullOrEmpty()]
-    [string] $AcrSourceDirectory = "C:\Users\Administrator\AppData\Roaming\XIVLauncherCN\pluginConfigs\PromeRotation\ACR\Tabris",
+    [string] $PackageSourceDirectory = "C:\Users\Administrator\AppData\Roaming\XIVLauncherCN\pluginConfigs\PromeRotation\ACRPackages\Tabris",
 
     [ValidateNotNullOrEmpty()]
     [string] $PackageName = "Tabris",
 
     [ValidateNotNullOrEmpty()]
-    [string] $Job = "BLM",
-
-    [ValidateNotNullOrEmpty()]
-    [string] $ContentScope = "Unspecified",
-
-    [ValidateNotNullOrEmpty()]
-    [string] $Author = "Dragonw233",
-
-    [string] $Description = "PR 黑魔 ACR",
-
-    [int] $ApiVersion = 15,
-
-    [ValidateNotNullOrEmpty()]
-    [string] $ReferencePromeVersion = "1.5.4.9",
-
-    [ValidateNotNullOrEmpty()]
     [string] $GitHubOwner = "Dragonw233",
 
+    [ValidateNotNullOrEmpty()]
     [string] $GitHubRepository = "tabris-acr",
 
     [ValidateNotNullOrEmpty()]
     [string] $Branch = "main",
-
-    [string] $SourceRepositoryUrl = "",
-
-    [string] $SponsorUrl = "",
 
     [ValidateNotNullOrEmpty()]
     [string] $RepositoryRoot = (Get-Location).Path,
@@ -46,6 +25,8 @@ param(
     [string] $OutputJsonName = "",
 
     [string] $DownloadUrl = "",
+
+    [string] $SourceRepositoryUrl = "",
 
     [switch] $UploadGitHubRelease,
 
@@ -109,50 +90,6 @@ function Get-GitHubRepositoryName {
     return ""
 }
 
-function New-AcrPackageZip {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string] $SourceDirectory,
-
-        [Parameter(Mandatory = $true)]
-        [string] $PackageName,
-
-        [Parameter(Mandatory = $true)]
-        [string] $DestinationZip
-    )
-
-    Add-Type -AssemblyName System.IO.Compression
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-
-    if (Test-Path -LiteralPath $DestinationZip) {
-        Remove-Item -LiteralPath $DestinationZip -Force
-    }
-
-    $files = @(Get-ChildItem -LiteralPath $SourceDirectory -Recurse -Force -File)
-    if ($files.Count -eq 0) {
-        throw "ACR source directory contains no files: $SourceDirectory"
-    }
-
-    $sourcePrefix = $SourceDirectory.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
-    $archive = [System.IO.Compression.ZipFile]::Open($DestinationZip, [System.IO.Compression.ZipArchiveMode]::Create)
-
-    try {
-        foreach ($file in $files) {
-            $relativePath = $file.FullName.Substring($sourcePrefix.Length).Replace("\", "/")
-            $entryName = "$PackageName/$relativePath"
-            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-                $archive,
-                $file.FullName,
-                $entryName,
-                [System.IO.Compression.CompressionLevel]::Optimal
-            ) | Out-Null
-        }
-    }
-    finally {
-        $archive.Dispose()
-    }
-}
-
 function Write-Utf8NoBom {
     param(
         [Parameter(Mandatory = $true)]
@@ -164,10 +101,6 @@ function Write-Utf8NoBom {
 
     $encoding = New-Object System.Text.UTF8Encoding $false
     [System.IO.File]::WriteAllText($Path, $Content, $encoding)
-}
-
-if ($Version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
-    Write-Warning "Version '$Version' is not in four-part form like 1.0.0.0."
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputZipName)) {
@@ -187,43 +120,41 @@ if ([string]::IsNullOrWhiteSpace($DownloadUrl)) {
 }
 
 $root = Resolve-RequiredPath -Path $RepositoryRoot -Kind "Repository root"
-$sourceDirectory = Resolve-RequiredPath -Path $AcrSourceDirectory -Kind "ACR source directory"
+$packageDirectory = Resolve-RequiredPath -Path $PackageSourceDirectory -Kind "Package source directory"
 
-if (-not (Test-Path -LiteralPath $sourceDirectory -PathType Container)) {
-    throw "ACR source path must be a directory: $sourceDirectory"
+if (-not (Test-Path -LiteralPath $packageDirectory -PathType Container)) {
+    throw "Package source path must be a directory: $packageDirectory"
 }
+
+$sourceZip = Resolve-RequiredPath -Path (Join-Path $packageDirectory "$PackageName.zip") -Kind "Source zip"
+$sourceJson = Resolve-RequiredPath -Path (Join-Path $packageDirectory "$PackageName.json") -Kind "Source json"
 
 $outputZip = Join-Path $root $OutputZipName
-New-AcrPackageZip -SourceDirectory $sourceDirectory -PackageName $PackageName -DestinationZip $outputZip
+$outputJson = Join-Path $root $OutputJsonName
+
+Copy-Item -LiteralPath $sourceZip -Destination $outputZip -Force
+
+$manifest = Get-Content -Raw -LiteralPath $sourceJson | ConvertFrom-Json
+if (-not [string]::IsNullOrWhiteSpace($Version)) {
+    $manifest.version = $Version
+}
+
+if ([string]::IsNullOrWhiteSpace($manifest.version)) {
+    throw "Package manifest must contain a version, or pass -Version."
+}
 
 $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $outputZip).Hash.ToLowerInvariant()
-$outputJson = Join-Path $root $OutputJsonName
-$tagName = "v$Version"
-
-$manifest = [ordered] @{
-    author = $Author
-    version = $Version
-    description = $Description
-    supportedJobs = @(
-        [ordered] @{
-            job = $Job
-            contentScope = $ContentScope
-        }
-    )
-    apiVersion = $ApiVersion
-    referencePromeVersion = $ReferencePromeVersion
-    downloadUrl = $DownloadUrl
-    sourceRepositoryUrl = $SourceRepositoryUrl
-    sponsorUrl = $SponsorUrl
-    sha256 = $sha256
-}
+$manifest.downloadUrl = $DownloadUrl
+$manifest.sourceRepositoryUrl = $SourceRepositoryUrl
+$manifest.sha256 = $sha256
 
 $json = ($manifest | ConvertTo-Json -Depth 10) + [Environment]::NewLine
 Write-Utf8NoBom -Path $outputJson -Content $json
 
-Write-Host "Published $PackageName $Version"
-Write-Host "Job:        $Job"
-Write-Host "Source:     $sourceDirectory"
+$tagName = "v$($manifest.version)"
+
+Write-Host "Published $PackageName $($manifest.version)"
+Write-Host "Source:     $packageDirectory"
 Write-Host "Zip:        $outputZip"
 Write-Host "Manifest:   $outputJson"
 Write-Host "SHA256:     $sha256"
@@ -243,11 +174,11 @@ if ($UploadGitHubRelease) {
         throw "GitHub CLI 'gh' was not found. Install gh or run without -UploadGitHubRelease."
     }
 
-    $releaseTitle = "$PackageName $Job ACR $Version"
+    $releaseTitle = "$PackageName ACR $($manifest.version)"
     $notes = @"
-$PackageName $Job ACR $Version
+$PackageName ACR $($manifest.version)
 
-Source: $AcrSourceDirectory
+Source: $PackageSourceDirectory
 Manifest: https://raw.githubusercontent.com/$GitHubOwner/$GitHubRepository/$Branch/$OutputJsonName
 SHA256: $sha256
 "@
