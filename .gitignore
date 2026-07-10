@@ -1,0 +1,5 @@
+# Keep release artifacts tracked.
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
