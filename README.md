@@ -4,9 +4,16 @@ PR 黑魔 ACR 发布。
 
 这是一个简化版 ACR 发布库：不包含社区下载清单，不做历史版本目录，只从本机 ACR 目录打包并发布一个压缩包。
 
-默认发布文件名：
+默认社区下载清单：
 
 ```text
+https://raw.githubusercontent.com/Dragonw233/tabris-acr/main/Tabris.json
+```
+
+默认发布文件：
+
+```text
+Tabris.json
 Tabris.zip
 ```
 
@@ -24,8 +31,9 @@ C:\Users\Administrator\AppData\Roaming\XIVLauncherCN\pluginConfigs\PromeRotation
 
 | 路径 | 用途 |
 | --- | --- |
+| `Tabris.json` | PromeRotation 社区下载清单，固定 raw 链接指向这个文件。 |
 | `Tabris.zip` | 发布脚本从本机 `Tabris` ACR 目录生成的压缩包。 |
-| `scripts/Publish-AcrZip.ps1` | 压缩 ACR 目录、计算 sha256，可选创建 GitHub Release。 |
+| `scripts/Publish-AcrZip.ps1` | 压缩 ACR 目录、生成 JSON、计算 sha256，可选创建 GitHub Release。 |
 
 ## 生成压缩包
 
@@ -39,6 +47,7 @@ C:\Users\Administrator\AppData\Roaming\XIVLauncherCN\pluginConfigs\PromeRotation
 脚本会把默认 ACR 目录压缩为：
 
 ```text
+Tabris.json
 Tabris.zip
 ```
 
@@ -54,7 +63,7 @@ Tabris/
 然后提交推送即可：
 
 ```powershell
-git add Tabris.zip
+git add Tabris.json Tabris.zip
 git commit -m "release: v1.0.0.0"
 git push origin main
 ```
@@ -66,10 +75,13 @@ git push origin main
 ```powershell
 .\scripts\Publish-AcrZip.ps1 `
   -Version "1.0.0.0" `
-  -UploadGitHubRelease
+  -UploadGitHubRelease `
+  -ClobberGitHubRelease
 ```
 
 `GitHubOwner` 默认是 `Dragonw233`，`GitHubRepository` 默认是 `tabris-acr`。如果以后换仓库，再手动传 `-GitHubRepository "<仓库名>"`。
+
+`-ClobberGitHubRelease` 用于覆盖同版本 Release 里已存在的 `Tabris.zip` / `Tabris.json`。发布新版本时可以不加。
 
 如果需要临时从别的目录打包，可以传：
 

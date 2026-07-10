@@ -14,14 +14,38 @@ param(
     [string] $Job = "BLM",
 
     [ValidateNotNullOrEmpty()]
+    [string] $ContentScope = "Unspecified",
+
+    [ValidateNotNullOrEmpty()]
+    [string] $Author = "Dragonw233",
+
+    [string] $Description = "PR 黑魔 ACR",
+
+    [int] $ApiVersion = 15,
+
+    [ValidateNotNullOrEmpty()]
+    [string] $ReferencePromeVersion = "1.5.4.9",
+
+    [ValidateNotNullOrEmpty()]
     [string] $GitHubOwner = "Dragonw233",
 
     [string] $GitHubRepository = "tabris-acr",
 
     [ValidateNotNullOrEmpty()]
+    [string] $Branch = "main",
+
+    [string] $SourceRepositoryUrl = "",
+
+    [string] $SponsorUrl = "",
+
+    [ValidateNotNullOrEmpty()]
     [string] $RepositoryRoot = (Get-Location).Path,
 
     [string] $OutputZipName = "",
+
+    [string] $OutputJsonName = "",
+
+    [string] $DownloadUrl = "",
 
     [switch] $UploadGitHubRelease,
 
@@ -129,12 +153,37 @@ function New-AcrPackageZip {
     }
 }
 
+function Write-Utf8NoBom {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Path,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Content
+    )
+
+    $encoding = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
 if ($Version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
     Write-Warning "Version '$Version' is not in four-part form like 1.0.0.0."
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputZipName)) {
     $OutputZipName = "$PackageName.zip"
+}
+
+if ([string]::IsNullOrWhiteSpace($OutputJsonName)) {
+    $OutputJsonName = "$PackageName.json"
+}
+
+if ([string]::IsNullOrWhiteSpace($SourceRepositoryUrl)) {
+    $SourceRepositoryUrl = "https://github.com/$GitHubOwner/$GitHubRepository"
+}
+
+if ([string]::IsNullOrWhiteSpace($DownloadUrl)) {
+    $DownloadUrl = "https://raw.githubusercontent.com/$GitHubOwner/$GitHubRepository/$Branch/$OutputZipName"
 }
 
 $root = Resolve-RequiredPath -Path $RepositoryRoot -Kind "Repository root"
@@ -148,13 +197,37 @@ $outputZip = Join-Path $root $OutputZipName
 New-AcrPackageZip -SourceDirectory $sourceDirectory -PackageName $PackageName -DestinationZip $outputZip
 
 $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $outputZip).Hash.ToLowerInvariant()
+$outputJson = Join-Path $root $OutputJsonName
 $tagName = "v$Version"
+
+$manifest = [ordered] @{
+    author = $Author
+    version = $Version
+    description = $Description
+    supportedJobs = @(
+        [ordered] @{
+            job = $Job
+            contentScope = $ContentScope
+        }
+    )
+    apiVersion = $ApiVersion
+    referencePromeVersion = $ReferencePromeVersion
+    downloadUrl = $DownloadUrl
+    sourceRepositoryUrl = $SourceRepositoryUrl
+    sponsorUrl = $SponsorUrl
+    sha256 = $sha256
+}
+
+$json = ($manifest | ConvertTo-Json -Depth 10) + [Environment]::NewLine
+Write-Utf8NoBom -Path $outputJson -Content $json
 
 Write-Host "Published $PackageName $Version"
 Write-Host "Job:        $Job"
 Write-Host "Source:     $sourceDirectory"
 Write-Host "Zip:        $outputZip"
+Write-Host "Manifest:   $outputJson"
 Write-Host "SHA256:     $sha256"
+Write-Host "Raw JSON:   https://raw.githubusercontent.com/$GitHubOwner/$GitHubRepository/$Branch/$OutputJsonName"
 
 if ($UploadGitHubRelease) {
     if ([string]::IsNullOrWhiteSpace($GitHubRepository)) {
@@ -175,6 +248,7 @@ if ($UploadGitHubRelease) {
 $PackageName $Job ACR $Version
 
 Source: $AcrSourceDirectory
+Manifest: https://raw.githubusercontent.com/$GitHubOwner/$GitHubRepository/$Branch/$OutputJsonName
 SHA256: $sha256
 "@
 
@@ -195,10 +269,15 @@ SHA256: $sha256
     }
 
     if ($releaseExists) {
-        & gh release upload $tagName $outputZip --repo $repo @clobberArgs
+        & gh release edit $tagName --repo $repo --title $releaseTitle --notes $notes
+        if ($LASTEXITCODE -ne 0) {
+            throw "GitHub release edit failed."
+        }
+
+        & gh release upload $tagName $outputZip $outputJson --repo $repo @clobberArgs
     }
     else {
-        & gh release create $tagName $outputZip --repo $repo --title $releaseTitle --notes $notes
+        & gh release create $tagName $outputZip $outputJson --repo $repo --title $releaseTitle --notes $notes
     }
 
     if ($LASTEXITCODE -ne 0) {
