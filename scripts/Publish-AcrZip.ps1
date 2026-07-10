@@ -184,8 +184,17 @@ SHA256: $sha256
         $clobberArgs += "--clobber"
     }
 
-    $existingRelease = & gh release view $tagName --repo $repo 2>$null
-    if ($LASTEXITCODE -eq 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        & gh release view $tagName --repo $repo *> $null
+        $releaseExists = $LASTEXITCODE -eq 0
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($releaseExists) {
         & gh release upload $tagName $outputZip --repo $repo @clobberArgs
     }
     else {
