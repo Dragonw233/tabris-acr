@@ -9,9 +9,9 @@
                           }
                       ],
     "apiVersion":  15,
-    "referencePromeVersion":  "1.5.4.9",
+    "referencePromeVersion":  "1.5.5.2",
     "downloadUrl":  "https://raw.githubusercontent.com/Dragonw233/tabris-acr/main/Tabris.zip",
     "sourceRepositoryUrl":  "https://github.com/Dragonw233/tabris-acr",
     "sponsorUrl":  "",
-    "sha256":  "60a732e4e33d58a94b2f1569cec79c2565e1b0f436347eb6ea1fd89d76c2dead"
+    "sha256":  "af40d80d38f7e3e8253cf119ac24deabf320345c20dc46796b05c9522a4df5c2"
 }
