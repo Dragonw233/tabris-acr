@@ -17,8 +17,7 @@ param(
     [ValidateNotNullOrEmpty()]
     [string] $Branch = "main",
 
-    [ValidateNotNullOrEmpty()]
-    [string] $RepositoryRoot = (Get-Location).Path,
+    [string] $RepositoryRoot = "",
 
     [string] $OutputZipName = "",
 
@@ -28,13 +27,25 @@ param(
 
     [string] $SourceRepositoryUrl = "",
 
+    [string] $GitCommitMessage = "",
+
     [switch] $UploadGitHubRelease,
 
-    [switch] $ClobberGitHubRelease
+    [switch] $ClobberGitHubRelease,
+
+    [switch] $LocalOnly,
+
+    [switch] $SkipGitPush,
+
+    [switch] $NoClobberGitHubRelease
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
+    $RepositoryRoot = Split-Path -Parent $PSScriptRoot
+}
 
 function Resolve-RequiredPath {
     param(
@@ -103,6 +114,64 @@ function Write-Utf8NoBom {
     [System.IO.File]::WriteAllText($Path, $Content, $encoding)
 }
 
+function Publish-GitRepositoryFiles {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Root,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Branch,
+
+        [Parameter(Mandatory = $true)]
+        [string] $ZipPath,
+
+        [Parameter(Mandatory = $true)]
+        [string] $JsonPath,
+
+        [Parameter(Mandatory = $true)]
+        [string] $CommitMessage
+    )
+
+    $gitCommand = Get-Command git -ErrorAction SilentlyContinue
+    if ($null -eq $gitCommand) {
+        throw "Git was not found. Install git or run with -LocalOnly / -SkipGitPush."
+    }
+
+    $gitRoot = (& git -C $Root rev-parse --show-toplevel 2>$null)
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($gitRoot)) {
+        throw "Repository root is not a git checkout: $Root"
+    }
+
+    $gitRoot = (Resolve-Path -LiteralPath $gitRoot.Trim()).Path
+    $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path
+    if ($gitRoot -ne $resolvedRoot) {
+        throw "RepositoryRoot must be the git top-level. Got '$resolvedRoot', git root is '$gitRoot'."
+    }
+
+    & git -C $Root add -- $ZipPath $JsonPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "git add failed."
+    }
+
+    & git -C $Root diff --cached --quiet -- $ZipPath $JsonPath
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Git:        no repository file changes to commit."
+    }
+    else {
+        & git -C $Root commit -m $CommitMessage
+        if ($LASTEXITCODE -ne 0) {
+            throw "git commit failed."
+        }
+    }
+
+    & git -C $Root push origin $Branch
+    if ($LASTEXITCODE -ne 0) {
+        throw "git push failed."
+    }
+
+    Write-Host "Git:        pushed $Branch"
+}
+
 if ([string]::IsNullOrWhiteSpace($OutputZipName)) {
     $OutputZipName = "$PackageName.zip"
 }
@@ -152,6 +221,9 @@ $json = ($manifest | ConvertTo-Json -Depth 10) + [Environment]::NewLine
 Write-Utf8NoBom -Path $outputJson -Content $json
 
 $tagName = "v$($manifest.version)"
+if ([string]::IsNullOrWhiteSpace($GitCommitMessage)) {
+    $GitCommitMessage = "release: sync $PackageName package $($manifest.version)"
+}
 
 Write-Host "Published $PackageName $($manifest.version)"
 Write-Host "Source:     $packageDirectory"
@@ -160,7 +232,20 @@ Write-Host "Manifest:   $outputJson"
 Write-Host "SHA256:     $sha256"
 Write-Host "Raw JSON:   https://raw.githubusercontent.com/$GitHubOwner/$GitHubRepository/$Branch/$OutputJsonName"
 
-if ($UploadGitHubRelease) {
+$shouldPublishGitFiles = -not $LocalOnly -and -not $SkipGitPush
+if ($shouldPublishGitFiles) {
+    Publish-GitRepositoryFiles -Root $root -Branch $Branch -ZipPath $outputZip -JsonPath $outputJson -CommitMessage $GitCommitMessage
+}
+elseif ($LocalOnly) {
+    Write-Host "Git:        skipped because -LocalOnly was specified."
+}
+else {
+    Write-Host "Git:        skipped because -SkipGitPush was specified."
+}
+
+$shouldUploadGitHubRelease = -not $LocalOnly -or $UploadGitHubRelease
+
+if ($shouldUploadGitHubRelease) {
     if ([string]::IsNullOrWhiteSpace($GitHubRepository)) {
         $GitHubRepository = Get-GitHubRepositoryName -Root $root -Owner $GitHubOwner
     }
@@ -185,7 +270,8 @@ SHA256: $sha256
 
     $repo = "$GitHubOwner/$GitHubRepository"
     $clobberArgs = @()
-    if ($ClobberGitHubRelease) {
+    $shouldClobberReleaseAssets = $ClobberGitHubRelease -or -not $NoClobberGitHubRelease
+    if ($shouldClobberReleaseAssets) {
         $clobberArgs += "--clobber"
     }
 
@@ -216,4 +302,7 @@ SHA256: $sha256
     }
 
     Write-Host "GitHub Release: https://github.com/$repo/releases/tag/$tagName"
+}
+else {
+    Write-Host "GitHub Release: skipped because -LocalOnly was specified."
 }

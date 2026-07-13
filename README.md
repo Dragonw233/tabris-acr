@@ -24,13 +24,15 @@ https://raw.githubusercontent.com/Dragonw233/tabris-acr/main/Tabris.json
 | `Tabris.zip` | PromeRotation ACR 压缩包。 |
 | `scripts/Publish-AcrZip.ps1` | 从 `ACRPackages\Tabris` 复制 zip/json，修正 raw 下载链接和 sha256，可选上传 GitHub Release。 |
 
-## 本地更新
+## 发布
 
-在仓库根目录运行：
+直接运行：
 
 ```powershell
 .\scripts\Publish-AcrZip.ps1
 ```
+
+从 `scripts` 目录里运行也可以，输出仍会写到发布库根目录。
 
 脚本会从 `ACRPackages\Tabris` 复制：
 
@@ -46,18 +48,30 @@ downloadUrl = https://raw.githubusercontent.com/Dragonw233/tabris-acr/main/Tabri
 sha256      = 当前 Tabris.zip 的 SHA256
 ```
 
+然后默认提交并推送到 GitHub `main`，再上传到 GitHub Release。版本号读取来源 `Tabris.json` 的 `version` 字段，同版本 Release 里的 `Tabris.zip` / `Tabris.json` 会自动覆盖。
+
 默认版本号读取来源 `Tabris.json` 的 `version` 字段；如果要临时覆盖版本号：
 
 ```powershell
 .\scripts\Publish-AcrZip.ps1 -Version "1.0.1"
 ```
 
-## 上传 GitHub Release
+## 只本地更新
 
-已安装并登录 GitHub CLI 后运行：
+如果只想复制文件，不上传 GitHub：
 
 ```powershell
-.\scripts\Publish-AcrZip.ps1 -UploadGitHubRelease -ClobberGitHubRelease
+.\scripts\Publish-AcrZip.ps1 -LocalOnly
 ```
 
-`-ClobberGitHubRelease` 用于覆盖同版本 Release 里已存在的 `Tabris.zip` / `Tabris.json`。发布新版本时可以不加。
+如果只想更新 Release，不提交推送 `main`：
+
+```powershell
+.\scripts\Publish-AcrZip.ps1 -SkipGitPush
+```
+
+如果不想覆盖同版本 Release 里的已有资产：
+
+```powershell
+.\scripts\Publish-AcrZip.ps1 -NoClobberGitHubRelease
+```
